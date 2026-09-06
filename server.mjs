@@ -5,14 +5,21 @@ import net from "node:net";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const RENDERER_SHARED_SECRET = process.env.RENDERER_SHARED_SECRET ?? "";
-const MAX_CONCURRENT_RENDERS = Math.max(1, Number(process.env.MAX_CONCURRENT_RENDERS ?? 2));
-const RENDER_TIMEOUT_MS = Math.max(5000, Number(process.env.RENDER_TIMEOUT_MS ?? 45000));
+const MAX_CONCURRENT_RENDERS = Math.max(
+  1,
+  Number(process.env.MAX_CONCURRENT_RENDERS ?? 2),
+);
+const RENDER_TIMEOUT_MS = Math.max(
+  5000,
+  Number(process.env.RENDER_TIMEOUT_MS ?? 45000),
+);
 
 if (!RENDERER_SHARED_SECRET) {
   throw new Error("RENDERER_SHARED_SECRET must be configured");
 }
 
 const app = express();
+
 app.disable("x-powered-by");
 app.use(express.json({ limit: "40mb" }));
 
@@ -22,12 +29,17 @@ const browserPromise = chromium.launch({
 });
 
 let activeRenders = 0;
+
 const waiters = [];
 
 function releaseSlot() {
   activeRenders = Math.max(0, activeRenders - 1);
+
   const next = waiters.shift();
-  if (next) next();
+
+  if (next) {
+    next();
+  }
 }
 
 async function acquireSlot() {
@@ -35,47 +47,102 @@ async function acquireSlot() {
     activeRenders += 1;
     return;
   }
+
   await new Promise((resolve) => waiters.push(resolve));
+
   activeRenders += 1;
 }
 
 function isPrivateIp(ip) {
-  if (!ip) return true;
+  if (!ip) {
+    return true;
+  }
+
   if (net.isIPv4(ip)) {
     const parts = ip.split(".").map(Number);
+
     const [a, b] = parts;
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
+
+    if (a === 10 || a === 127 || a === 0) {
+      return true;
+    }
+
+    if (a === 169 && b === 254) {
+      return true;
+    }
+
+    if (a === 172 && b >= 16 && b <= 31) {
+      return true;
+    }
+
+    if (a === 192 && b === 168) {
+      return true;
+    }
+
+    if (a === 100 && b >= 64 && b <= 127) {
+      return true;
+    }
+
     return false;
   }
+
   const normalized = ip.toLowerCase();
-  if (normalized === "::1" || normalized === "::") return true;
-  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
-  if (normalized.startsWith("fe80:")) return true;
+
+  if (normalized === "::1" || normalized === "::") {
+    return true;
+  }
+
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) {
+    return true;
+  }
+
+  if (normalized.startsWith("fe80:")) {
+    return true;
+  }
+
   return false;
 }
 
 async function isSafePublicHttpUrl(rawUrl) {
   let parsed;
+
   try {
     parsed = new URL(rawUrl);
   } catch {
     return false;
   }
 
-  if (!["http:", "https:"].includes(parsed.protocol)) return false;
-  const hostname = parsed.hostname.toLowerCase();
-  if (!hostname || hostname === "localhost" || hostname.endsWith(".local")) return false;
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    return false;
+  }
 
-  if (net.isIP(hostname)) return !isPrivateIp(hostname);
+  const hostname = parsed.hostname.toLowerCase();
+
+  if (
+    !hostname ||
+    hostname === "localhost" ||
+    hostname.endsWith(".local")
+  ) {
+    return false;
+  }
+
+  if (net.isIP(hostname)) {
+    return !isPrivateIp(hostname);
+  }
 
   try {
-    const records = await dns.lookup(hostname, { all: true, verbatim: true });
-    if (!records.length) return false;
-    return records.every((record) => !isPrivateIp(record.address));
+    const records = await dns.lookup(hostname, {
+      all: true,
+      verbatim: true,
+    });
+
+    if (!records.length) {
+      return false;
+    }
+
+    return records.every(
+      (record) => !isPrivateIp(record.address),
+    );
   } catch {
     return false;
   }
@@ -83,150 +150,573 @@ async function isSafePublicHttpUrl(rawUrl) {
 
 function authorized(req) {
   const auth = req.get("authorization") ?? "";
+
   return auth === `Bearer ${RENDERER_SHARED_SECRET}`;
 }
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, activeRenders, maxConcurrentRenders: MAX_CONCURRENT_RENDERS });
+  res.json({
+    ok: true,
+    activeRenders,
+    maxConcurrentRenders: MAX_CONCURRENT_RENDERS,
+  });
 });
 
 app.post("/render", async (req, res) => {
   if (!authorized(req)) {
-    return res.status(401).json({ error: "Unauthorized" });
+    return res.status(401).json({
+      error: "Unauthorized",
+    });
   }
 
-  const { html, width, height } = req.body ?? {};
-  if (typeof html !== "string" || html.length < 20) {
-    return res.status(400).json({ error: "Missing or invalid html" });
+  const {
+    html,
+    width,
+    height,
+  } = req.body ?? {};
+
+  if (
+    typeof html !== "string" ||
+    html.length < 20
+  ) {
+    return res.status(400).json({
+      error: "Missing or invalid html",
+    });
   }
-  if (!Number.isInteger(width) || !Number.isInteger(height)) {
-    return res.status(400).json({ error: "width and height must be integers" });
+
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height)
+  ) {
+    return res.status(400).json({
+      error: "width and height must be integers",
+    });
   }
-  if (width < 320 || width > 3840 || height < 320 || height > 3840) {
-    return res.status(400).json({ error: "Unsupported render dimensions" });
+
+  if (
+    width < 320 ||
+    width > 3840 ||
+    height < 320 ||
+    height > 3840
+  ) {
+    return res.status(400).json({
+      error: "Unsupported render dimensions",
+    });
   }
 
   await acquireSlot();
+
   let page;
 
   try {
     const browser = await browserPromise;
+
     const context = await browser.newContext({
-      viewport: { width, height },
+      viewport: {
+        width,
+        height,
+      },
       deviceScaleFactor: 1,
       javaScriptEnabled: true,
     });
 
     page = await context.newPage();
+
     page.setDefaultTimeout(RENDER_TIMEOUT_MS);
-    page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
+    page.setDefaultNavigationTimeout(
+      RENDER_TIMEOUT_MS,
+    );
 
     await page.route("**/*", async (route) => {
       const url = route.request().url();
-      if (url.startsWith("data:") || url.startsWith("blob:") || url === "about:blank") {
+
+      if (
+        url.startsWith("data:") ||
+        url.startsWith("blob:") ||
+        url === "about:blank"
+      ) {
         return route.continue();
       }
-      if (await isSafePublicHttpUrl(url)) return route.continue();
+
+      if (await isSafePublicHttpUrl(url)) {
+        return route.continue();
+      }
+
       return route.abort("blockedbyclient");
     });
 
-    await page.setContent(html, {
-      waitUntil: "load",
-      timeout: RENDER_TIMEOUT_MS,
-    });
+    await page.setContent(
+      html,
+      {
+        waitUntil: "load",
+        timeout: RENDER_TIMEOUT_MS,
+      },
+    );
 
-    // Wait for all fonts, images and the v12 auto-fit script to settle.
+    // ------------------------------------------------------------
+    // WAIT FOR ALL FONTS / IMAGES / LAYOUT TO SETTLE
+    // ------------------------------------------------------------
+
     await page.evaluate(async () => {
       if (document.fonts?.ready) {
-        try { await document.fonts.ready; } catch {}
+        try {
+          await document.fonts.ready;
+        } catch {}
       }
+
       const images = Array.from(document.images);
-      await Promise.all(images.map(async (img) => {
-        if (!img.complete) {
-          await new Promise((resolve) => {
-            const done = () => resolve(undefined);
-            img.addEventListener("load", done, { once: true });
-            img.addEventListener("error", done, { once: true });
-          });
-        }
-        if (typeof img.decode === "function") {
-          try { await img.decode(); } catch {}
-        }
-      }));
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      await Promise.all(
+        images.map(async (img) => {
+          if (!img.complete) {
+            await new Promise((resolve) => {
+              const done = () => resolve(undefined);
+
+              img.addEventListener(
+                "load",
+                done,
+                {
+                  once: true,
+                },
+              );
+
+              img.addEventListener(
+                "error",
+                done,
+                {
+                  once: true,
+                },
+              );
+            });
+          }
+
+          if (
+            typeof img.decode === "function"
+          ) {
+            try {
+              await img.decode();
+            } catch {}
+          }
+        }),
+      );
+
+      await new Promise(
+        (resolve) =>
+          requestAnimationFrame(
+            () =>
+              requestAnimationFrame(
+                resolve,
+              ),
+          ),
+      );
+
+      await new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            60,
+          ),
+      );
     });
 
-    const root = page.locator(".flyer-root");
-    if ((await root.count()) !== 1) {
-      throw new Error("Expected exactly one .flyer-root element");
+    const root =
+      page.locator(".flyer-root");
+
+    if (
+      (await root.count()) !== 1
+    ) {
+      throw new Error(
+        "Expected exactly one .flyer-root element",
+      );
     }
 
-    const overflow = await page.evaluate(() => {
-      const selectors = [
-        ".flyer-badge",
-        ".brand-wordmark",
-        ".flyer-eyebrow",
-        ".flyer-headline",
-        ".flyer-subheadline",
-        ".flyer-cta",
-        ".footer-label",
-        ".footer-phone",
-        ".footer-message",
-      ];
-      return selectors.flatMap((selector) => {
-        const el = document.querySelector(selector);
-        if (!el) return [];
-        const widthOverflow = el.scrollWidth > el.clientWidth + 6;
-        const heightOverflow = el.scrollHeight > el.clientHeight + 6;
-        return widthOverflow || heightOverflow
-          ? [{ selector, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }]
-          : [];
+    // ------------------------------------------------------------
+    // FINAL SERVER-SIDE TEXT FIT PASS
+    // ------------------------------------------------------------
+    //
+    // Browsers can report a tiny 1-4px overflow due to line-height
+    // and font metric rounding even after Content Studio has already
+    // auto-fitted the text.
+    //
+    // Instead of rejecting the whole flyer, shrink only the affected
+    // text zone by 1px at a time until it genuinely fits.
+    // ------------------------------------------------------------
+
+    const fitResult =
+      await page.evaluate(() => {
+        const rules = [
+          {
+            selector: ".flyer-badge",
+            minPx: 12,
+          },
+          {
+            selector: ".brand-wordmark",
+            minPx: 14,
+          },
+          {
+            selector: ".flyer-eyebrow",
+            minPx: 12,
+          },
+          {
+            selector: ".flyer-headline",
+            minPx: 30,
+          },
+          {
+            selector: ".flyer-subheadline",
+            minPx: 16,
+          },
+          {
+            selector: ".flyer-cta",
+            minPx: 15,
+          },
+          {
+            selector: ".footer-label",
+            minPx: 11,
+          },
+          {
+            selector: ".footer-phone",
+            minPx: 15,
+          },
+          {
+            selector: ".footer-message",
+            minPx: 11,
+          },
+        ];
+
+        const overflowBy = (el) => ({
+          x: Math.max(
+            0,
+            el.scrollWidth -
+              el.clientWidth,
+          ),
+          y: Math.max(
+            0,
+            el.scrollHeight -
+              el.clientHeight,
+          ),
+        });
+
+        const repaired = [];
+
+        for (const rule of rules) {
+          const el =
+            document.querySelector(
+              rule.selector,
+            );
+
+          if (
+            !(el instanceof HTMLElement)
+          ) {
+            continue;
+          }
+
+          let overflow =
+            overflowBy(el);
+
+          // Tiny browser rounding is fine.
+          if (
+            overflow.x <= 2 &&
+            overflow.y <= 2
+          ) {
+            continue;
+          }
+
+          let fontSize =
+            Number.parseFloat(
+              getComputedStyle(el)
+                .fontSize || "0",
+            );
+
+          if (
+            !Number.isFinite(
+              fontSize,
+            ) ||
+            fontSize <= 0
+          ) {
+            continue;
+          }
+
+          const originalFontSize =
+            fontSize;
+
+          let iterations = 0;
+
+          // Shrink conservatively in 1px steps.
+          while (
+            (
+              overflow.x > 2 ||
+              overflow.y > 2
+            ) &&
+            fontSize >
+              rule.minPx &&
+            iterations < 80
+          ) {
+            fontSize =
+              Math.max(
+                rule.minPx,
+                fontSize - 1,
+              );
+
+            el.style.setProperty(
+              "font-size",
+              `${fontSize}px`,
+              "important",
+            );
+
+            overflow =
+              overflowBy(el);
+
+            iterations += 1;
+          }
+
+          if (
+            fontSize !==
+            originalFontSize
+          ) {
+            repaired.push({
+              selector:
+                rule.selector,
+
+              from:
+                originalFontSize,
+
+              to:
+                fontSize,
+
+              remainingOverflowX:
+                overflow.x,
+
+              remainingOverflowY:
+                overflow.y,
+            });
+          }
+        }
+
+        return repaired;
       });
-    });
+
+    if (fitResult.length) {
+      console.log(
+        "Renderer emergency text-fit applied",
+        fitResult,
+      );
+
+      // Let Chromium recalculate line boxes.
+      await page.evaluate(
+        () =>
+          new Promise(
+            (resolve) =>
+              requestAnimationFrame(
+                () =>
+                  requestAnimationFrame(
+                    resolve,
+                  ),
+              ),
+          ),
+      );
+    }
+
+    // ------------------------------------------------------------
+    // FINAL OVERFLOW VALIDATION
+    // ------------------------------------------------------------
+
+    const overflow =
+      await page.evaluate(() => {
+        const selectors = [
+          ".flyer-badge",
+          ".brand-wordmark",
+          ".flyer-eyebrow",
+          ".flyer-headline",
+          ".flyer-subheadline",
+          ".flyer-cta",
+          ".footer-label",
+          ".footer-phone",
+          ".footer-message",
+        ];
+
+        return selectors.flatMap(
+          (selector) => {
+            const el =
+              document.querySelector(
+                selector,
+              );
+
+            if (
+              !(
+                el instanceof
+                HTMLElement
+              )
+            ) {
+              return [];
+            }
+
+            const overflowX =
+              Math.max(
+                0,
+                el.scrollWidth -
+                  el.clientWidth,
+              );
+
+            const overflowY =
+              Math.max(
+                0,
+                el.scrollHeight -
+                  el.clientHeight,
+              );
+
+            /*
+             * 4px is treated as harmless raster/font-metric
+             * rounding only.
+             *
+             * Anything larger still fails safely so Biz-BoT
+             * never creates a genuinely clipped PNG.
+             */
+            const significantOverflow =
+              overflowX > 4 ||
+              overflowY > 4;
+
+            return significantOverflow
+              ? [
+                  {
+                    selector,
+
+                    scrollWidth:
+                      el.scrollWidth,
+
+                    clientWidth:
+                      el.clientWidth,
+
+                    scrollHeight:
+                      el.scrollHeight,
+
+                    clientHeight:
+                      el.clientHeight,
+
+                    overflowX,
+
+                    overflowY,
+                  },
+                ]
+              : [];
+          },
+        );
+      });
 
     if (overflow.length) {
-      console.error("Render rejected because text still overflows", overflow);
-      return res.status(422).json({ error: "Flyer layout overflow detected", overflow });
+      console.error(
+        "Render rejected because text still overflows after emergency fit",
+        overflow,
+      );
+
+      return res.status(422).json({
+        error:
+          "Flyer layout overflow detected",
+
+        overflow,
+      });
     }
 
-    const png = await root.screenshot({
-      type: "png",
-      animations: "disabled",
-      caret: "hide",
-      scale: "css",
-      timeout: RENDER_TIMEOUT_MS,
-    });
+    // ------------------------------------------------------------
+    // SCREENSHOT FINAL FLYER
+    // ------------------------------------------------------------
 
-    res.setHeader("Content-Type", "image/png");
-    res.setHeader("Content-Length", String(png.length));
-    res.setHeader("Cache-Control", "no-store");
-    return res.status(200).send(png);
+    const png =
+      await root.screenshot({
+        type: "png",
+
+        animations: "disabled",
+
+        caret: "hide",
+
+        scale: "css",
+
+        timeout:
+          RENDER_TIMEOUT_MS,
+      });
+
+    res.setHeader(
+      "Content-Type",
+      "image/png",
+    );
+
+    res.setHeader(
+      "Content-Length",
+      String(png.length),
+    );
+
+    res.setHeader(
+      "Cache-Control",
+      "no-store",
+    );
+
+    return res
+      .status(200)
+      .send(png);
   } catch (error) {
-    console.error("[renderer] render failed", error);
+    console.error(
+      "[renderer] render failed",
+      error,
+    );
+
     if (!res.headersSent) {
-      return res.status(500).json({ error: error instanceof Error ? error.message : "Render failed" });
+      return res
+        .status(500)
+        .json({
+          error:
+            error instanceof Error
+              ? error.message
+              : "Render failed",
+        });
     }
   } finally {
-    try { await page?.context().close(); } catch {}
+    try {
+      await page
+        ?.context()
+        .close();
+    } catch {}
+
     releaseSlot();
   }
 });
 
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Biz-BoT flyer renderer listening on :${PORT}`);
-});
+const server =
+  app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+      console.log(
+        `Biz-BoT flyer renderer listening on :${PORT}`,
+      );
+    },
+  );
 
 async function shutdown(signal) {
-  console.log(`Received ${signal}; shutting down`);
-  server.close(async () => {
-    try {
-      const browser = await browserPromise;
-      await browser.close();
-    } catch {}
-    process.exit(0);
-  });
+  console.log(
+    `Received ${signal}; shutting down`,
+  );
+
+  server.close(
+    async () => {
+      try {
+        const browser =
+          await browserPromise;
+
+        await browser.close();
+      } catch {}
+
+      process.exit(0);
+    },
+  );
 }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+process.on(
+  "SIGTERM",
+  () =>
+    shutdown("SIGTERM"),
+);
+
+process.on(
+  "SIGINT",
+  () =>
+    shutdown("SIGINT"),
+);
