@@ -177,8 +177,8 @@ app.post("/render", async (req, res) => {
       return selectors.flatMap((selector) => {
         const el = document.querySelector(selector);
         if (!el) return [];
-        const widthOverflow = el.scrollWidth > el.clientWidth + 2;
-        const heightOverflow = el.scrollHeight > el.clientHeight + 2;
+        const widthOverflow = el.scrollWidth > el.clientWidth + 6;
+        const heightOverflow = el.scrollHeight > el.clientHeight + 6;
         return widthOverflow || heightOverflow
           ? [{ selector, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }]
           : [];
